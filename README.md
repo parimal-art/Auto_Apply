@@ -19,6 +19,7 @@ Open `.env.local` and fill in:
 
 | Variable | What to put |
 |---|---|
+| `SEND_PASSWORD` | The password you must enter in the app before any email is sent |
 | `SMTP_USER` | Your Gmail address |
 | `SMTP_PASS` | A Gmail **App Password** (not your normal password) |
 | `FROM_NAME` | Name recipients see (optional) |
@@ -38,6 +39,13 @@ npm run dev
 ```
 
 Open http://localhost:3000
+
+## Password protection
+
+Before clicking **Send Emails** you must type the password you set in `SEND_PASSWORD`.
+The check happens on the server (`app/api/send/route.js`), so it cannot be bypassed from the browser.
+If the password is wrong, nothing is sent. After 5 wrong attempts, sending is locked for 60 seconds.
+To change the password, edit `.env.local` and restart `npm run dev`.
 
 ## How it works
 

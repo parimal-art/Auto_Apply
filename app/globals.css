@@ -66,6 +66,7 @@ label.label {
 }
 
 input[type="text"],
+input[type="password"],
 textarea {
   width: 100%;
   padding: 10px 12px;
@@ -77,6 +78,7 @@ textarea {
 }
 
 input[type="text"]:focus,
+input[type="password"]:focus,
 textarea:focus,
 .chips:focus-within {
   outline: 2px solid var(--primary);
@@ -169,6 +171,16 @@ textarea {
   font-size: 13px;
   text-decoration: underline;
   padding: 0;
+}
+
+.password-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.link-btn.muted {
+  color: var(--muted);
 }
 
 .send-btn {

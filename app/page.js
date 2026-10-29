@@ -19,6 +19,8 @@ export default function Home() {
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [file, setFile] = useState(null);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const [summary, setSummary] = useState("");
@@ -118,6 +120,7 @@ export default function Home() {
     if (finalEmails.length === 0) return setError("Add at least one email address.");
     if (!subject.trim()) return setError("Please enter a heading / subject.");
     if (!message.trim()) return setError("Please enter a description / message.");
+    if (!password) return setError("Enter the password to send emails.");
 
     setEmails(finalEmails);
     setEmailInput("");
@@ -128,6 +131,7 @@ export default function Home() {
       formData.append("emails", JSON.stringify(finalEmails));
       formData.append("subject", subject);
       formData.append("message", message);
+      formData.append("password", password);
       if (file) formData.append("resume", file);
 
       const res = await fetch("/api/send", { method: "POST", body: formData });
@@ -135,6 +139,7 @@ export default function Home() {
 
       if (!res.ok) {
         setError(data.error || "Something went wrong.");
+        if (res.status === 401) setPassword(""); // wrong password: clear it
       } else {
         setResults(data.results || []);
         setSummary(`Sent ${data.sent} of ${data.total} emails${data.failed ? ` (${data.failed} failed)` : ""}.`);
@@ -236,6 +241,28 @@ export default function Home() {
               <span className="hint">PDF / DOC / DOCX, max {MAX_FILE_MB} MB (optional)</span>
             )}
           </div>
+        </div>
+
+        <div className="field">
+          <label className="label" htmlFor="password">🔒 Password (required to send)</label>
+          <div className="password-row">
+            <input
+              id="password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Enter your send password"
+              autoComplete="off"
+            />
+            <button
+              type="button"
+              className="link-btn muted"
+              onClick={() => setShowPassword((s) => !s)}
+            >
+              {showPassword ? "hide" : "show"}
+            </button>
+          </div>
+          <div className="hint">Emails are sent only if this matches SEND_PASSWORD on the server.</div>
         </div>
 
         <button className="send-btn" type="submit" disabled={sending}>
