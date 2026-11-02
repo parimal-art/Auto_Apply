@@ -1,7 +1,17 @@
-# Mail Sender (Next.js + Nodemailer)
+# Mail Sender (Next.js + Ant Design + Nodemailer)
 
-Write a heading and description, add many recipient emails, attach your resume, and click **Send**.
-Every recipient receives their **own separate email** (no CC/BCC, nobody sees the other addresses).
+Open the app and your heading and message are already filled in. Edit them, add recipient emails,
+attach your resume, and click **Send Emails**. Every recipient receives their **own separate email**
+(no CC/BCC, nobody sees the other addresses).
+
+## What's new
+
+- Heading and message are pre-filled with your application text every time the app opens.
+- Each field has a **Clear** button (removes all text so you can write fresh) and a **Reset** button (restores the default).
+- Sending is blocked without an attachment, both in the UI (button disabled) and on the server (API returns an error).
+- Ant Design UI that works like an app on desktop and mobile, with a sticky send bar.
+
+To change the default text, edit `app/defaults.js`.
 
 ## 1. Install
 
@@ -40,21 +50,16 @@ npm run dev
 
 Open http://localhost:3000
 
-## Password protection
+## Files
 
-Before clicking **Send Emails** you must type the password you set in `SEND_PASSWORD`.
-The check happens on the server (`app/api/send/route.js`), so it cannot be bypassed from the browser.
-If the password is wrong, nothing is sent. After 5 wrong attempts, sending is locked for 60 seconds.
-To change the password, edit `.env.local` and restart `npm run dev`.
-
-## How it works
-
-- `app/page.js` – the UI (email chips, subject, message, resume upload, delivery report)
-- `app/api/send/route.js` – receives the form, loops through each recipient, and calls `nodemailer.sendMail()` once per address with the same subject, message and attachment
+- `app/defaults.js` – default heading and message
+- `app/providers.js` – Ant Design theme and registry
+- `app/page.js` – the UI
+- `app/api/send/route.js` – validates everything (password, recipients, required attachment) and sends one email per address
 
 ## Limits and tips
 
 - Max 100 recipients per click and a 10 MB attachment (change `MAX_RECIPIENTS` / `MAX_FILE_BYTES` in the route).
 - Gmail allows roughly 500 emails/day on a normal account. Don't blast thousands of mails or your account may get flagged.
-- Keep `.env.local` private. Never commit it to Git (it is already in `.gitignore`).
+- Keep `.env.local` private. Never commit it to Git.
 - If you deploy to Vercel, add the same variables in the project's Environment Variables, and note that serverless time limits apply to large batches.

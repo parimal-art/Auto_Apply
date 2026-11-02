@@ -1,148 +1,130 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
+import {
+  Alert,
+  App,
+  Button,
+  Card,
+  Col,
+  Input,
+  List,
+  Row,
+  Select,
+  Space,
+  Statistic,
+  Tag,
+  Tooltip,
+  Typography,
+  Upload,
+} from "antd";
+import {
+  CheckCircleFilled,
+  CloseCircleFilled,
+  CloudUploadOutlined,
+  DeleteOutlined,
+  FileTextOutlined,
+  LockOutlined,
+  MailOutlined,
+  PaperClipOutlined,
+  SendOutlined,
+  UndoOutlined,
+  UserOutlined,
+} from "@ant-design/icons";
+import { DEFAULT_MESSAGE, DEFAULT_SUBJECT } from "./defaults";
+
+const { Text } = Typography;
+const { TextArea } = Input;
+const { Dragger } = Upload;
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_FILE_MB = 10;
-
-// Split text on commas, semicolons, spaces and new lines
-function splitEmails(text) {
-  return text
-    .split(/[,;\s]+/)
-    .map((e) => e.trim())
-    .filter(Boolean);
-}
+const ALLOWED_EXT = [".pdf", ".doc", ".docx"];
 
 export default function Home() {
+  const { message: toast } = App.useApp();
+
   const [emails, setEmails] = useState([]);
-  const [emailInput, setEmailInput] = useState("");
-  const [subject, setSubject] = useState("");
-  const [message, setMessage] = useState("");
+  const [subject, setSubject] = useState(DEFAULT_SUBJECT);
+  const [body, setBody] = useState(DEFAULT_MESSAGE);
   const [file, setFile] = useState(null);
   const [password, setPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
-  const [summary, setSummary] = useState("");
   const [results, setResults] = useState([]);
-  const fileRef = useRef(null);
+  const [summary, setSummary] = useState(null);
 
-  // Add one or many emails from a string (typed or pasted)
-  function addEmails(text) {
-    const parts = splitEmails(text);
-    if (parts.length === 0) return;
-
-    const invalid = parts.filter((p) => !EMAIL_REGEX.test(p));
-    const valid = parts.filter((p) => EMAIL_REGEX.test(p));
-
-    setEmails((prev) => {
-      const set = new Set(prev.map((e) => e.toLowerCase()));
-      const next = [...prev];
-      for (const v of valid) {
-        if (!set.has(v.toLowerCase())) {
-          set.add(v.toLowerCase());
-          next.push(v);
-        }
+  // ----- recipients -----
+  function handleEmailsChange(values) {
+    const cleaned = [];
+    const invalid = [];
+    for (const raw of values) {
+      const v = String(raw).trim().toLowerCase();
+      if (!v) continue;
+      if (!EMAIL_REGEX.test(v)) {
+        invalid.push(raw);
+        continue;
       }
-      return next;
-    });
-
-    if (invalid.length) {
-      setError(`Invalid email skipped: ${invalid.join(", ")}`);
-    } else {
-      setError("");
+      if (!cleaned.includes(v)) cleaned.push(v);
     }
+    if (invalid.length) toast.warning(`Invalid email skipped: ${invalid.join(", ")}`);
+    setEmails(cleaned);
   }
 
-  function handleEmailKeyDown(e) {
-    if (e.key === "Enter" || e.key === "," || e.key === ";" || e.key === " ") {
-      if (emailInput.trim()) {
-        e.preventDefault();
-        addEmails(emailInput);
-        setEmailInput("");
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-      }
-    } else if (e.key === "Backspace" && !emailInput && emails.length) {
-      setEmails((prev) => prev.slice(0, -1));
+  // ----- attachment -----
+  function beforeUpload(f) {
+    const name = f.name.toLowerCase();
+    if (!ALLOWED_EXT.some((ext) => name.endsWith(ext))) {
+      toast.error("Only PDF, DOC or DOCX files are allowed.");
+      return Upload.LIST_IGNORE;
     }
-  }
-
-  function handleEmailPaste(e) {
-    const text = e.clipboardData.getData("text");
-    if (/[,;\s]/.test(text.trim())) {
-      e.preventDefault();
-      addEmails(text);
-    }
-  }
-
-  function removeEmail(email) {
-    setEmails((prev) => prev.filter((e) => e !== email));
-  }
-
-  function handleFileChange(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
     if (f.size > MAX_FILE_MB * 1024 * 1024) {
-      setError(`File is too large. Max ${MAX_FILE_MB} MB.`);
-      e.target.value = "";
-      return;
+      toast.error(`File is too large. Max ${MAX_FILE_MB} MB.`);
+      return Upload.LIST_IGNORE;
     }
-    setError("");
     setFile(f);
-  }
-
-  function clearFile() {
-    setFile(null);
-    if (fileRef.current) fileRef.current.value = "";
-  }
-
-  async function handleSend(e) {
-    e.preventDefault();
     setError("");
-    setSummary("");
+    return false; // do not auto-upload; we send it with the form
+  }
+
+  const fileList = file
+    ? [{ uid: "resume", name: file.name, status: "done", size: file.size }]
+    : [];
+
+  // ----- send -----
+  const canSend = !!file && !sending;
+
+  async function handleSend() {
+    setError("");
+    setSummary(null);
     setResults([]);
 
-    // Also take whatever is still typed in the input box
-    const pending = splitEmails(emailInput);
-    const pendingInvalid = pending.filter((p) => !EMAIL_REGEX.test(p));
-    if (pendingInvalid.length) {
-      setError(`Invalid email: ${pendingInvalid.join(", ")}`);
-      return;
-    }
-    const finalEmails = [...emails];
-    for (const p of pending) {
-      if (!finalEmails.some((x) => x.toLowerCase() === p.toLowerCase())) {
-        finalEmails.push(p);
-      }
-    }
-
-    if (finalEmails.length === 0) return setError("Add at least one email address.");
+    if (!file) return setError("Attach your resume first. Emails cannot be sent without an attachment.");
+    if (emails.length === 0) return setError("Add at least one recipient email.");
     if (!subject.trim()) return setError("Please enter a heading / subject.");
-    if (!message.trim()) return setError("Please enter a description / message.");
+    if (!body.trim()) return setError("Please enter a description / message.");
     if (!password) return setError("Enter the password to send emails.");
 
-    setEmails(finalEmails);
-    setEmailInput("");
     setSending(true);
-
     try {
       const formData = new FormData();
-      formData.append("emails", JSON.stringify(finalEmails));
+      formData.append("emails", JSON.stringify(emails));
       formData.append("subject", subject);
-      formData.append("message", message);
+      formData.append("message", body);
       formData.append("password", password);
-      if (file) formData.append("resume", file);
+      formData.append("resume", file);
 
       const res = await fetch("/api/send", { method: "POST", body: formData });
       const data = await res.json();
 
       if (!res.ok) {
         setError(data.error || "Something went wrong.");
-        if (res.status === 401) setPassword(""); // wrong password: clear it
+        if (res.status === 401) setPassword("");
       } else {
         setResults(data.results || []);
-        setSummary(`Sent ${data.sent} of ${data.total} emails${data.failed ? ` (${data.failed} failed)` : ""}.`);
+        setSummary({ total: data.total, sent: data.sent, failed: data.failed });
+        if (data.failed) toast.warning(`Sent ${data.sent} of ${data.total}. ${data.failed} failed.`);
+        else toast.success(`All ${data.sent} emails sent!`);
       }
     } catch (err) {
       setError(err.message || "Network error.");
@@ -152,135 +134,265 @@ export default function Home() {
   }
 
   return (
-    <main className="container">
-      <h1>📧 Mail Sender</h1>
-      <p className="subtitle">
-        Each recipient gets their own separate email with your heading, description and resume.
-      </p>
+    <div className="app-shell">
+      <header className="hero">
+        <div className="hero-inner">
+          <div className="hero-icon">
+            <MailOutlined />
+          </div>
+          <div>
+            <h1>Mail Sender</h1>
+            <p>One personal email per recipient, with your resume attached.</p>
+          </div>
+        </div>
+      </header>
 
-      <form className="card" onSubmit={handleSend}>
-        {error && <div className="alert error">{error}</div>}
-        {summary && <div className="alert success">{summary}</div>}
+      <main className="content">
+        {error && (
+          <Alert
+            type="error"
+            showIcon
+            closable
+            message={error}
+            onClose={() => setError("")}
+            style={{ marginBottom: 16, borderRadius: 12 }}
+          />
+        )}
 
-        <div className="field">
-          <label className="label">To (recipients)</label>
-          <div className="chips">
-            {emails.map((email) => (
-              <span className="chip" key={email}>
-                {email}
-                <button type="button" onClick={() => removeEmail(email)} aria-label={`Remove ${email}`}>
-                  ×
-                </button>
+        {/* ---------- Recipients ---------- */}
+        <Card className="panel" styles={{ body: { padding: 20 } }}>
+          <div className="field">
+            <div className="section-title">
+              <span className="name">
+                <UserOutlined /> To (recipients)
               </span>
-            ))}
-            <input
-              type="text"
-              value={emailInput}
-              placeholder={emails.length ? "Add more..." : "ab@gmail.com, abc@gmail.com"}
-              onChange={(e) => setEmailInput(e.target.value)}
-              onKeyDown={handleEmailKeyDown}
-              onPaste={handleEmailPaste}
-              onBlur={() => {
-                if (emailInput.trim()) {
-                  addEmails(emailInput);
-                  setEmailInput("");
-                }
-              }}
-            />
-          </div>
-          <div className="hint">
-            Separate with comma, space or Enter. You can paste a whole list. {emails.length} added.
-          </div>
-        </div>
-
-        <div className="field">
-          <label className="label" htmlFor="subject">Heading (subject)</label>
-          <input
-            id="subject"
-            type="text"
-            value={subject}
-            onChange={(e) => setSubject(e.target.value)}
-            placeholder="Application for Software Engineer role"
-          />
-        </div>
-
-        <div className="field">
-          <label className="label" htmlFor="message">Description (message)</label>
-          <textarea
-            id="message"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder={"Dear Hiring Manager,\n\nI am writing to apply for..."}
-          />
-        </div>
-
-        <div className="field">
-          <label className="label">Resume / attachment</label>
-          <div className="file-row">
-            <label className="file-btn" htmlFor="resume">
-              {file ? "Change file" : "Upload resume"}
-            </label>
-            <input
-              id="resume"
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg"
-              onChange={handleFileChange}
-              style={{ display: "none" }}
-            />
-            {file ? (
-              <>
-                <span className="file-name">
-                  📎 {file.name} ({(file.size / 1024).toFixed(0)} KB)
-                </span>
-                <button type="button" className="link-btn" onClick={clearFile}>
-                  remove
-                </button>
-              </>
-            ) : (
-              <span className="hint">PDF / DOC / DOCX, max {MAX_FILE_MB} MB (optional)</span>
-            )}
-          </div>
-        </div>
-
-        <div className="field">
-          <label className="label" htmlFor="password">🔒 Password (required to send)</label>
-          <div className="password-row">
-            <input
-              id="password"
-              type={showPassword ? "text" : "password"}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Enter your send password"
-              autoComplete="off"
-            />
-            <button
-              type="button"
-              className="link-btn muted"
-              onClick={() => setShowPassword((s) => !s)}
-            >
-              {showPassword ? "hide" : "show"}
-            </button>
-          </div>
-          <div className="hint">Emails are sent only if this matches SEND_PASSWORD on the server.</div>
-        </div>
-
-        <button className="send-btn" type="submit" disabled={sending}>
-          {sending ? "Sending... please wait" : "Send Emails"}
-        </button>
-      </form>
-
-      {results.length > 0 && (
-        <section className="results">
-          <h2>Delivery report</h2>
-          {results.map((r) => (
-            <div key={r.email} className={`result-row ${r.success ? "ok" : "fail"}`}>
-              <span>{r.email}</span>
-              <span>{r.success ? "✓ Sent" : `✗ ${r.error}`}</span>
+              <span className="actions">
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={emails.length === 0}
+                  onClick={() => setEmails([])}
+                >
+                  Clear
+                </Button>
+              </span>
             </div>
-          ))}
-        </section>
-      )}
-    </main>
+            <Select
+              mode="tags"
+              size="large"
+              style={{ width: "100%" }}
+              value={emails}
+              onChange={handleEmailsChange}
+              tokenSeparators={[",", ";", " ", "\n"]}
+              open={false}
+              suffixIcon={null}
+              placeholder="hr@company.com, jobs@company.com"
+            />
+            <div className="status-row">
+              <Tag color={emails.length ? "blue" : "default"}>{emails.length} recipient(s)</Tag>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                Type or paste a list. Separate with comma, space or Enter.
+              </Text>
+            </div>
+          </div>
+        </Card>
+
+        {/* ---------- Subject & message ---------- */}
+        <Card className="panel" styles={{ body: { padding: 20 } }}>
+          <div className="field">
+            <div className="section-title">
+              <span className="name">
+                <FileTextOutlined /> Heading (subject)
+              </span>
+              <span className="actions">
+                <Tooltip title="Restore default heading">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<UndoOutlined />}
+                    onClick={() => setSubject(DEFAULT_SUBJECT)}
+                  >
+                    Reset
+                  </Button>
+                </Tooltip>
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={!subject}
+                  onClick={() => setSubject("")}
+                >
+                  Clear
+                </Button>
+              </span>
+            </div>
+            <Input
+              size="large"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="Write your email heading"
+              allowClear
+            />
+          </div>
+
+          <div className="field message-area">
+            <div className="section-title">
+              <span className="name">
+                <MailOutlined /> Description (message)
+              </span>
+              <span className="actions">
+                <Tooltip title="Restore default message">
+                  <Button
+                    size="small"
+                    type="text"
+                    icon={<UndoOutlined />}
+                    onClick={() => setBody(DEFAULT_MESSAGE)}
+                  >
+                    Reset
+                  </Button>
+                </Tooltip>
+                <Button
+                  size="small"
+                  type="text"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled={!body}
+                  onClick={() => setBody("")}
+                >
+                  Clear
+                </Button>
+              </span>
+            </div>
+            <TextArea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              autoSize={{ minRows: 10, maxRows: 24 }}
+              placeholder="Write your email message"
+              showCount
+            />
+          </div>
+        </Card>
+
+        {/* ---------- Attachment ---------- */}
+        <Card className="panel" styles={{ body: { padding: 20 } }}>
+          <div className="section-title">
+            <span className="name">
+              <PaperClipOutlined /> Resume / attachment <Tag color="red">Required</Tag>
+            </span>
+          </div>
+          <Dragger
+            accept={ALLOWED_EXT.join(",")}
+            maxCount={1}
+            multiple={false}
+            beforeUpload={beforeUpload}
+            fileList={fileList}
+            onRemove={() => setFile(null)}
+            showUploadList={{ showRemoveIcon: true }}
+          >
+            <p className="ant-upload-drag-icon">
+              <CloudUploadOutlined />
+            </p>
+            <p className="ant-upload-text">Tap or drop your resume here</p>
+            <p className="ant-upload-hint">
+              PDF / DOC / DOCX, max {MAX_FILE_MB} MB. Emails will not be sent without it.
+            </p>
+          </Dragger>
+          {!file && (
+            <Alert
+              style={{ marginTop: 12, borderRadius: 10 }}
+              type="warning"
+              showIcon
+              message="Attach your resume to enable sending."
+            />
+          )}
+        </Card>
+
+        {/* ---------- Password ---------- */}
+        <Card className="panel" styles={{ body: { padding: 20 } }}>
+          <div className="section-title">
+            <span className="name">
+              <LockOutlined /> Password (required to send)
+            </span>
+          </div>
+          <Input.Password
+            size="large"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Enter your send password"
+            autoComplete="off"
+            onPressEnter={handleSend}
+          />
+        </Card>
+
+        {/* ---------- Delivery report ---------- */}
+        {summary && (
+          <Card className="panel" title="Delivery report" styles={{ body: { padding: 20 } }}>
+            <Row gutter={16} style={{ marginBottom: 12 }}>
+              <Col span={8}>
+                <Statistic title="Total" value={summary.total} />
+              </Col>
+              <Col span={8}>
+                <Statistic title="Sent" value={summary.sent} valueStyle={{ color: "#16a34a" }} />
+              </Col>
+              <Col span={8}>
+                <Statistic
+                  title="Failed"
+                  value={summary.failed}
+                  valueStyle={{ color: summary.failed ? "#dc2626" : undefined }}
+                />
+              </Col>
+            </Row>
+            <List
+              size="small"
+              dataSource={results}
+              renderItem={(r) => (
+                <List.Item>
+                  <div className="result-item">
+                    <span className="email">{r.email}</span>
+                    {r.success ? (
+                      <Tag icon={<CheckCircleFilled />} color="success">
+                        Sent
+                      </Tag>
+                    ) : (
+                      <Tooltip title={r.error}>
+                        <Tag icon={<CloseCircleFilled />} color="error">
+                          Failed
+                        </Tag>
+                      </Tooltip>
+                    )}
+                  </div>
+                </List.Item>
+              )}
+            />
+          </Card>
+        )}
+      </main>
+
+      {/* ---------- Sticky action bar ---------- */}
+      <div className="action-bar">
+        <div className="action-bar-inner">
+          <div className="action-meta">
+            <b>{emails.length}</b> recipient(s) · {file ? <b>{file.name}</b> : "no attachment"}
+          </div>
+          <Tooltip title={!file ? "Attach your resume to send" : ""}>
+            <span style={{ display: "contents" }}>
+              <Button
+                type="primary"
+                className="send-btn"
+                icon={<SendOutlined />}
+                loading={sending}
+                disabled={!canSend}
+                onClick={handleSend}
+              >
+                {sending ? "Sending..." : "Send Emails"}
+              </Button>
+            </span>
+          </Tooltip>
+        </div>
+      </div>
+    </div>
   );
 }

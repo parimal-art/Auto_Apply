@@ -35,6 +35,14 @@ function escapeHtml(str) {
     .replace(/"/g, "&quot;");
 }
 
+// Turn plain URLs into clickable links (runs AFTER escaping)
+function linkify(escaped) {
+  return escaped.replace(
+    /(https?:\/\/[^\s<]+)/g,
+    '<a href="$1" style="color:#4f46e5;">$1</a>'
+  );
+}
+
 function createTransporter() {
   const { SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS } = process.env;
 
@@ -113,21 +121,24 @@ export async function POST(request) {
     if (!subject) return NextResponse.json({ error: "Subject is required." }, { status: 400 });
     if (!message) return NextResponse.json({ error: "Message is required." }, { status: 400 });
 
-    // ---- Attachment (optional) ----
-    let attachments = [];
-    if (resume && typeof resume === "object" && resume.size > 0) {
-      if (resume.size > MAX_FILE_BYTES) {
-        return NextResponse.json({ error: "Attachment is larger than 10 MB." }, { status: 400 });
-      }
-      const buffer = Buffer.from(await resume.arrayBuffer());
-      attachments = [
-        {
-          filename: resume.name,
-          content: buffer,
-          contentType: resume.type || undefined,
-        },
-      ];
+    // ---- Attachment (REQUIRED) ----
+    if (!resume || typeof resume !== "object" || !resume.size) {
+      return NextResponse.json(
+        { error: "Attachment is required. Emails were NOT sent without a resume." },
+        { status: 400 }
+      );
     }
+    if (resume.size > MAX_FILE_BYTES) {
+      return NextResponse.json({ error: "Attachment is larger than 10 MB." }, { status: 400 });
+    }
+    const buffer = Buffer.from(await resume.arrayBuffer());
+    const attachments = [
+      {
+        filename: resume.name,
+        content: buffer,
+        contentType: resume.type || undefined,
+      },
+    ];
 
     // ---- Transporter ----
     const transporter = createTransporter();
@@ -138,8 +149,8 @@ export async function POST(request) {
       ? `"${fromName.replace(/"/g, "")}" <${process.env.SMTP_USER}>`
       : process.env.SMTP_USER;
 
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222;">${escapeHtml(
-      message
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222;">${linkify(
+      escapeHtml(message)
     ).replace(/\r?\n/g, "<br>")}</div>`;
 
     const delay = Number(process.env.SEND_DELAY_MS) || 800;
